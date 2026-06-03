@@ -111,16 +111,24 @@ async function fetchDerivAccount(token) {
 }
 
 async function fetchDerivOTP(token, accountId) {
-  const res = await fetch(`${REST_BASE}/trading/v1/options/accounts/${accountId}/otp`, {
+  const url = `${REST_BASE}/trading/v1/options/accounts/${accountId}/otp`;
+  console.log('[OTP] POST', url);
+
+  const res = await fetch(url, {
     method: 'POST',
     headers: derivHeaders(token),
   });
+
+  const body = await res.json().catch(() => null);
+  console.log('[OTP] status:', res.status, 'body:', JSON.stringify(body));
+
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || `OTP request failed: ${res.status}`);
+    throw new Error(body?.message ?? body?.error ?? `OTP request failed: ${res.status}`);
   }
-  const data = await res.json();
-  return data?.data?.otp ?? data?.otp ?? data;
+
+  const otp = body?.data?.otp ?? body?.otp ?? body?.data ?? body;
+  console.log('[OTP] parsed otp:', otp);
+  return otp;
 }
 
 async function loginDemo() {
