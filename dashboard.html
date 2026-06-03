@@ -73,6 +73,54 @@
     }
     .btn-logout:hover { color: var(--text); border-color: #444; }
 
+    /* ─── ACCOUNT SWITCHER ────────────────────────────── */
+    .account-switcher {
+      position: relative;
+    }
+
+    .account-switcher-btn {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 10px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--bg);
+      color: var(--text); font-size: 13px; cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .account-switcher-btn:hover { border-color: #444; }
+
+    .account-switcher-btn .acct-id   { font-weight: 600; }
+    .account-switcher-btn .acct-type { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; }
+    .acct-type.real { background: #0a1f0a; color: var(--buy); }
+    .acct-type.demo { background: #2a2a10; color: var(--warn); }
+    .account-switcher-btn .chevron   { font-size: 9px; color: var(--muted); margin-left: 2px; }
+
+    .account-dropdown {
+      display: none;
+      position: absolute; top: calc(100% + 6px); right: 0;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; min-width: 220px; z-index: 100;
+      overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .account-dropdown.open { display: block; }
+
+    .dropdown-header {
+      padding: 10px 14px 6px;
+      font-size: 10px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.6px;
+    }
+
+    .account-option {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; cursor: pointer; transition: background 0.1s;
+      gap: 10px;
+    }
+    .account-option:hover { background: #ffffff08; }
+    .account-option.active { background: #ffffff05; }
+
+    .acct-option-left  { display: flex; flex-direction: column; gap: 2px; }
+    .acct-option-id    { font-size: 13px; font-weight: 600; }
+    .acct-option-bal   { font-size: 12px; color: var(--muted); }
+    .acct-option-check { color: var(--buy); font-size: 14px; }
+
     /* ─── MAIN LAYOUT ─────────────────────────────────── */
     .layout {
       display: grid;
@@ -276,7 +324,18 @@
     </div>
 
     <div class="nav-right">
-      <span class="nav-user" id="nav-user">Demo Account</span>
+      <div class="account-switcher" id="account-switcher" style="display:none">
+        <button class="account-switcher-btn" id="switcher-btn" onclick="toggleDropdown()">
+          <span class="acct-id" id="switcher-id">—</span>
+          <span class="acct-type" id="switcher-type">DEMO</span>
+          <span class="chevron">▼</span>
+        </button>
+        <div class="account-dropdown" id="account-dropdown">
+          <div class="dropdown-header">Switch Account</div>
+          <div id="account-options"></div>
+        </div>
+      </div>
+      <span class="nav-user" id="nav-user">Loading…</span>
       <button class="btn-logout" onclick="logout()">Log out</button>
     </div>
   </nav>
@@ -417,26 +476,92 @@
     document.getElementById('mode-badge').className = 'nav-badge ' + (isDemo ? 'badge-demo' : 'badge-live');
     document.getElementById('nav-user').textContent = isDemo ? 'Demo Account' : 'Loading…';
 
-    // ─── Real account bootstrap ──────────────────────────
+    // ─── Account state ───────────────────────────────────
+    let allAccounts   = [];
+    let activeAccount = null;
+
+    function applyAccount(account) {
+      activeAccount = account;
+      const isReal  = account.account_type === 'real';
+      const id      = account.account_id ?? '';
+      const cur     = account.currency ?? 'USD';
+
+      balance = parseFloat(account.balance ?? 0);
+      positions = [];
+      updateStats();
+      renderPositions();
+
+      // Nav badge
+      document.getElementById('mode-badge').textContent  = isReal ? 'LIVE' : 'DEMO';
+      document.getElementById('mode-badge').className    = 'nav-badge ' + (isReal ? 'badge-live' : 'badge-demo');
+
+      // Switcher button
+      document.getElementById('switcher-id').textContent   = id;
+      document.getElementById('switcher-type').textContent = isReal ? 'REAL' : 'DEMO';
+      document.getElementById('switcher-type').className   = 'acct-type ' + (isReal ? 'real' : 'demo');
+
+      // Render options list
+      const opts = document.getElementById('account-options');
+      opts.innerHTML = allAccounts.map(a => {
+        const active = a.account_id === id;
+        const aReal  = a.account_type === 'real';
+        return `
+          <div class="account-option ${active ? 'active' : ''}" onclick="switchAccount('${a.account_id}')">
+            <div class="acct-option-left">
+              <span class="acct-option-id">
+                ${a.account_id}
+                <span class="acct-type ${aReal ? 'real' : 'demo'}" style="margin-left:6px">
+                  ${aReal ? 'REAL' : 'DEMO'}
+                </span>
+              </span>
+              <span class="acct-option-bal">$${parseFloat(a.balance).toFixed(2)} ${a.currency}</span>
+            </div>
+            ${active ? '<span class="acct-option-check">✓</span>' : ''}
+          </div>`;
+      }).join('');
+    }
+
+    function switchAccount(accountId) {
+      const account = allAccounts.find(a => a.account_id === accountId);
+      if (!account) return;
+      closeDropdown();
+      applyAccount(account);
+      showToast(`Switched to ${account.account_id} (${account.account_type})`);
+    }
+
+    function toggleDropdown() {
+      document.getElementById('account-dropdown').classList.toggle('open');
+    }
+
+    function closeDropdown() {
+      document.getElementById('account-dropdown').classList.remove('open');
+    }
+
+    document.addEventListener('click', e => {
+      if (!document.getElementById('account-switcher').contains(e.target)) closeDropdown();
+    });
+
+    // ─── Bootstrap: load accounts from Deriv API ─────────
     if (!isDemo) {
       fetchDerivAccount(session.token)
         .then(data => {
-          const accounts = Array.isArray(data?.data) ? data.data : [];
-          const account  = accounts.find(a => a.account_type === 'real') ?? accounts[0];
+          allAccounts = Array.isArray(data?.data) ? data.data : [];
+          if (allAccounts.length === 0) throw new Error('No accounts returned.');
 
-          if (account) {
-            balance = parseFloat(account.balance ?? 0);
-            updateStats();
-            const id  = account.account_id ?? '';
-            const cur = account.currency ?? 'USD';
-            document.getElementById('nav-user').textContent = `${id} (${cur})`;
-          }
+          document.getElementById('account-switcher').style.display = 'block';
+          document.getElementById('nav-user').style.display         = 'none';
+
+          // Default to real account if available, otherwise first
+          const defaultAccount = allAccounts.find(a => a.account_type === 'real') ?? allAccounts[0];
+          applyAccount(defaultAccount);
         })
         .catch(err => {
-          console.warn('Could not load real account data:', err.message);
+          console.warn('Could not load accounts:', err.message);
           document.getElementById('nav-user').textContent = 'Live Account';
-          showToast('Could not load real balance — using simulated data.', true);
+          showToast('Could not load account data — using simulated data.', true);
         });
+    } else {
+      document.getElementById('nav-user').textContent = 'Demo Account';
     }
 
     // ─── State ───────────────────────────────────────────
