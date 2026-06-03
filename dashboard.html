@@ -566,7 +566,7 @@
         .catch(err => {
           console.error('WS setup error:', err.message);
           derivWS = null;
-          showToast(`WS: ${err.message}`, true);
+          showToast(`WS failed: ${err.message} (simulated mode active)`, true);
         });
     }
 
@@ -579,14 +579,14 @@
       if (derivWS) {
         try {
           await derivWS.connect(session.token, account.account_id, account.account_type);
+          showToast(`Switched to ${account.account_id} (${account.account_type}) — WS live`);
         } catch (e) {
           console.warn('WS account switch failed:', e.message);
-          showToast(`WS reconnect failed: ${e.message}`, true);
+          showToast(`Switched to ${account.account_id} — WS failed: ${e.message}`, true);
         }
       }
 
       applyAccount(account);
-      showToast(`Switched to ${account.account_id} (${account.account_type})`);
     };
 
     // ─── Deriv WebSocket ─────────────────────────────────
@@ -655,16 +655,25 @@
         });
       }
 
-      buy({ symbol, contractType, amount, duration, durationUnit }) {
-        return this._send({
-          buy: '1',
-          price: amount,
-          parameters: {
-            amount, basis: 'stake', contract_type: contractType,
-            currency: 'USD', duration, duration_unit: durationUnit,
-            underlying_symbol: symbol,
-          },
+      isOpen() {
+        return this.ws && this.ws.readyState === WebSocket.OPEN;
+      }
+
+      async buy({ symbol, contractType, amount, duration, durationUnit }) {
+        // Step 1: get a price proposal
+        const propRes = await this._send({
+          proposal: 1,
+          contract_type: contractType,
+          currency: 'USD',
+          underlying_symbol: symbol,
+          amount, basis: 'stake',
+          duration, duration_unit: durationUnit,
         });
+        const proposal = propRes.proposal;
+        if (!proposal?.id) throw new Error('No proposal ID in response');
+
+        // Step 2: buy with the proposal ID
+        return this._send({ buy: proposal.id, price: proposal.ask_price ?? amount });
       }
 
       sell(contractId) {
@@ -774,8 +783,8 @@
       btn.disabled = true;
       btn.textContent = 'Placing…';
 
-      // Simulated trade (demo button login, or no WS connection)
-      if (!derivWS) {
+      // Simulated trade — fallback when WS not open
+      if (!derivWS?.isOpen()) {
         balance -= amount;
         positions.push({
           id: nextId++, contractId: null,
@@ -829,8 +838,8 @@
       const closeBtn = document.querySelector(`[data-close="${id}"]`);
       if (closeBtn) { closeBtn.disabled = true; closeBtn.textContent = '…'; }
 
-      // Simulated close
-      if (!derivWS || !p.contractId) {
+      // Simulated close — fallback when WS not open
+      if (!derivWS?.isOpen() || !p.contractId) {
         const pnl = calcPnL(p);
         balance += p.amount + pnl;
         positions.splice(idx, 1);
