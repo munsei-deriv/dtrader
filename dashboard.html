@@ -541,7 +541,7 @@
       if (!document.getElementById('account-switcher').contains(e.target)) closeDropdown();
     });
 
-    // ─── Bootstrap: load accounts from Deriv API ─────────
+    // ─── Bootstrap: load accounts + connect WebSocket ────
     if (!isDemo) {
       fetchDerivAccount(session.token)
         .then(data => {
@@ -551,18 +551,138 @@
           document.getElementById('account-switcher').style.display = 'block';
           document.getElementById('nav-user').style.display         = 'none';
 
-          // Default to real account if available, otherwise first
           const defaultAccount = allAccounts.find(a => a.account_type === 'real') ?? allAccounts[0];
           applyAccount(defaultAccount);
+
+          // Connect WebSocket for real trading
+          derivWS = new DerivWS();
+          return derivWS.connect(session.token);
+        })
+        .then(acctInfo => {
+          if (acctInfo) {
+            showToast('Connected to Deriv — trades are live.');
+            // Refresh balance from WS authorize response
+            if (acctInfo.balance != null && activeAccount) {
+              balance = parseFloat(acctInfo.balance);
+              updateStats();
+            }
+          }
         })
         .catch(err => {
-          console.warn('Could not load accounts:', err.message);
-          document.getElementById('nav-user').textContent = 'Live Account';
-          showToast('Could not load account data — using simulated data.', true);
+          console.warn('Setup error:', err.message);
+          derivWS = null;
+          if (allAccounts.length === 0) {
+            document.getElementById('nav-user').textContent = 'Live Account';
+          }
+          showToast('Live trading unavailable — using simulated mode.', true);
         });
     } else {
       document.getElementById('nav-user').textContent = 'Demo Account';
     }
+
+    // Re-connect WebSocket when switching accounts (if WS has an account token)
+    const _baseSwitch = switchAccount;
+    switchAccount = async function(accountId) {
+      const account = allAccounts.find(a => a.account_id === accountId);
+      if (!account) return;
+      closeDropdown();
+
+      if (derivWS && derivWS.accountTokens[accountId]) {
+        try {
+          const acctInfo = await derivWS.connect(derivWS.accountTokens[accountId]);
+          if (acctInfo?.balance != null) account.balance = acctInfo.balance;
+        } catch (e) {
+          console.warn('WS account switch failed:', e.message);
+        }
+      }
+
+      applyAccount(account);
+      showToast(`Switched to ${account.account_id} (${account.account_type})`);
+    };
+
+    // ─── Deriv WebSocket ─────────────────────────────────
+    const SYMBOLS = {
+      EURUSD: 'frxEURUSD', GBPUSD: 'frxGBPUSD',
+      BTCUSD: 'cryBTCUSD', ETHUSD: 'cryETHUSD',
+      XAUUSD: 'frxXAUUSD', USDJPY: 'frxUSDJPY',
+    };
+
+    const DURATIONS = {
+      '1m': { duration: 1, duration_unit: 'm' },
+      '5m': { duration: 5, duration_unit: 'm' },
+      '15m':{ duration: 15,duration_unit: 'm' },
+      '1h': { duration: 1, duration_unit: 'h' },
+    };
+
+    class DerivWS {
+      constructor() {
+        this.ws = null;
+        this._pending = new Map();
+        this._reqId = 1;
+        this.accountTokens = {}; // loginid → token from authorize response
+      }
+
+      connect(token) {
+        return new Promise((resolve, reject) => {
+          if (this.ws) { this.ws.close(); this.ws = null; }
+          this.ws = new WebSocket('wss://ws.binaryws.com/websockets/v3');
+          this.ws.onmessage = e => this._onMsg(JSON.parse(e.data));
+          this.ws.onerror   = () => reject(new Error('WebSocket connection failed'));
+          this.ws.onopen    = () => {
+            this._send({ authorize: token })
+              .then(res => {
+                (res.authorize?.account_list ?? []).forEach(a => {
+                  if (a.token) this.accountTokens[a.loginid] = a.token;
+                });
+                resolve(res.authorize);
+              })
+              .catch(reject);
+          };
+        });
+      }
+
+      _onMsg(msg) {
+        const id = msg.req_id;
+        if (id && this._pending.has(id)) {
+          const { resolve, reject } = this._pending.get(id);
+          this._pending.delete(id);
+          msg.error ? reject(new Error(msg.error.message)) : resolve(msg);
+        }
+      }
+
+      _send(data) {
+        return new Promise((resolve, reject) => {
+          const id = this._reqId++;
+          this._pending.set(id, { resolve, reject });
+          this.ws.send(JSON.stringify({ ...data, req_id: id }));
+        });
+      }
+
+      buy({ symbol, contractType, amount, duration, durationUnit }) {
+        return this._send({
+          buy: '1',
+          price: amount,
+          parameters: {
+            amount, basis: 'stake', contract_type: contractType,
+            currency: 'USD', duration, duration_unit: durationUnit, symbol,
+          },
+        });
+      }
+
+      sell(contractId) {
+        return this._send({ sell: contractId, price: 0 });
+      }
+
+      getPortfolio() {
+        return this._send({ portfolio: 1 });
+      }
+
+      getBalance() {
+        return this._send({ balance: 1 });
+      }
+    }
+
+    let derivWS = null;
 
     // ─── State ───────────────────────────────────────────
     const ASSETS = {
@@ -655,40 +775,93 @@
     document.getElementById('amount').addEventListener('input', updateSummary);
 
     // ─── Place trade ──────────────────────────────────────
-    function placeTrade() {
+    async function placeTrade() {
       const amount = parseFloat(document.getElementById('amount').value);
       if (!amount || amount <= 0) { showToast('Enter a valid amount.', true); return; }
       if (amount > balance)       { showToast('Insufficient balance.', true); return; }
 
-      const asset = selectedAsset;
-      balance -= amount;
+      const btn = document.getElementById('btn-place-trade');
+      btn.disabled = true;
+      btn.textContent = 'Placing…';
 
-      positions.push({
-        id: nextId++,
-        asset,
-        dir: selectedDir,
-        amount,
-        entry: prices[asset],
-        duration: selectedDuration,
-        openedAt: Date.now(),
-      });
+      // Simulated trade (demo button login, or no WS connection)
+      if (!derivWS) {
+        balance -= amount;
+        positions.push({
+          id: nextId++, contractId: null,
+          asset: selectedAsset, dir: selectedDir,
+          amount, entry: prices[selectedAsset],
+          duration: selectedDuration, openedAt: Date.now(),
+        });
+        renderPositions(); updateStats();
+        showToast(`${selectedDir.toUpperCase()} ${ASSETS[selectedAsset].label} — $${amount.toFixed(2)}`);
+        btn.disabled = false;
+        setDir(selectedDir);
+        return;
+      }
 
-      renderPositions();
-      updateStats();
-      showToast(`${selectedDir.toUpperCase()} ${ASSETS[asset].label} — $${amount.toFixed(2)}`);
+      // Real trade via Deriv WebSocket API
+      const { duration, duration_unit } = DURATIONS[selectedDuration];
+      try {
+        const res = await derivWS.buy({
+          symbol:       SYMBOLS[selectedAsset],
+          contractType: selectedDir === 'buy' ? 'CALL' : 'PUT',
+          amount, duration, durationUnit: duration_unit,
+        });
+        const c = res.buy;
+        positions.push({
+          id: nextId++,
+          contractId:  c.contract_id,
+          asset:       selectedAsset,
+          dir:         selectedDir,
+          amount:      c.buy_price,
+          entry:       c.spot ?? prices[selectedAsset],
+          duration:    selectedDuration,
+          openedAt:    Date.now(),
+        });
+        balance -= c.buy_price;
+        renderPositions(); updateStats();
+        showToast(`${selectedDir.toUpperCase()} ${ASSETS[selectedAsset].label} — $${c.buy_price.toFixed(2)}`);
+      } catch (e) {
+        showToast(`Trade failed: ${e.message}`, true);
+      }
+
+      btn.disabled = false;
+      setDir(selectedDir);
     }
 
     // ─── Close position ───────────────────────────────────
-    function closePosition(id) {
+    async function closePosition(id) {
       const idx = positions.findIndex(p => p.id === id);
       if (idx === -1) return;
       const p = positions[idx];
-      const pnl = calcPnL(p);
-      balance += p.amount + pnl;
-      positions.splice(idx, 1);
-      renderPositions();
-      updateStats();
-      showToast(`Closed ${ASSETS[p.asset].label} — P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`, pnl < 0);
+
+      const closeBtn = document.querySelector(`[data-close="${id}"]`);
+      if (closeBtn) { closeBtn.disabled = true; closeBtn.textContent = '…'; }
+
+      // Simulated close
+      if (!derivWS || !p.contractId) {
+        const pnl = calcPnL(p);
+        balance += p.amount + pnl;
+        positions.splice(idx, 1);
+        renderPositions(); updateStats();
+        showToast(`Closed ${ASSETS[p.asset].label} — P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`, pnl < 0);
+        return;
+      }
+
+      // Real close via Deriv WebSocket API
+      try {
+        const res = await derivWS.sell(p.contractId);
+        const soldFor = res.sell?.sold_for ?? 0;
+        const pnl = soldFor - p.amount;
+        balance += soldFor;
+        positions.splice(idx, 1);
+        renderPositions(); updateStats();
+        showToast(`Closed ${ASSETS[p.asset].label} — P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`, pnl < 0);
+      } catch (e) {
+        showToast(`Failed to close: ${e.message}`, true);
+        renderPositions();
+      }
     }
 
     function calcPnL(p) {
@@ -729,7 +902,7 @@
             <td>${fmt(p.asset, prices[p.asset])}</td>
             <td class="pnl ${cls}">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}</td>
             <td style="color:var(--muted);font-size:12px">${elapsed}s</td>
-            <td><button class="btn-close" onclick="closePosition(${p.id})">Close</button></td>
+            <td><button class="btn-close" data-close="${p.id}" onclick="closePosition(${p.id})">Close</button></td>
           </tr>`;
       }).join('');
     }
