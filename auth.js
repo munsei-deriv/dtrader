@@ -101,9 +101,10 @@ async function fetchDerivAccount(token) {
   return res.json();
 }
 
-function loginDemo() {
-  _storeSession({ accessToken: 'demo_token', expiresIn: 3600, demo: true });
-  window.location.href = 'dashboard.html';
+async function loginDemo() {
+  // Go through real OAuth so the WebSocket can authenticate — default to demo account after login
+  sessionStorage.setItem('prefer_demo', '1');
+  await redirectToAuth({ signup: false });
 }
 
 function _storeSession({ accessToken, expiresIn, demo }) {

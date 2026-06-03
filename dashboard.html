@@ -472,9 +472,7 @@
     const session = getSession();
     const isDemo = session.demo;
 
-    document.getElementById('mode-badge').textContent = isDemo ? 'DEMO' : 'LIVE';
-    document.getElementById('mode-badge').className = 'nav-badge ' + (isDemo ? 'badge-demo' : 'badge-live');
-    document.getElementById('nav-user').textContent = isDemo ? 'Demo Account' : 'Loading…';
+    document.getElementById('nav-user').textContent = 'Loading…';
 
     // ─── Account state ───────────────────────────────────
     let allAccounts   = [];
@@ -551,7 +549,11 @@
           document.getElementById('account-switcher').style.display = 'block';
           document.getElementById('nav-user').style.display         = 'none';
 
-          const defaultAccount = allAccounts.find(a => a.account_type === 'real') ?? allAccounts[0];
+          const preferDemo   = sessionStorage.getItem('prefer_demo') === '1';
+          sessionStorage.removeItem('prefer_demo');
+          const defaultAccount = preferDemo
+            ? (allAccounts.find(a => a.account_type === 'demo') ?? allAccounts[0])
+            : (allAccounts.find(a => a.account_type === 'real') ?? allAccounts[0]);
           applyAccount(defaultAccount);
 
           // Connect WebSocket for real trading
@@ -576,8 +578,6 @@
           }
           showToast('Live trading unavailable — using simulated mode.', true);
         });
-    } else {
-      document.getElementById('nav-user').textContent = 'Demo Account';
     }
 
     // Re-connect WebSocket when switching accounts (if WS has an account token)
