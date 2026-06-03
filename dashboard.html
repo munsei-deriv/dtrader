@@ -421,19 +421,16 @@
     if (!isDemo) {
       fetchDerivAccount(session.token)
         .then(data => {
-          // Normalise: REST API may return { accounts: [...] } or a single account object
-          const account = Array.isArray(data?.accounts) ? data.accounts[0] : data;
-          const realBalance = account?.balance ?? account?.Balance ?? null;
-          const currency    = account?.currency ?? account?.Currency ?? 'USD';
-          const loginId     = account?.loginid  ?? account?.login_id ?? '';
-          const name        = account?.fullname  ?? account?.full_name ?? 'Live Account';
+          const accounts = Array.isArray(data?.data) ? data.data : [];
+          const account  = accounts.find(a => a.account_type === 'real') ?? accounts[0];
 
-          if (realBalance !== null) {
-            balance = parseFloat(realBalance);
+          if (account) {
+            balance = parseFloat(account.balance ?? 0);
             updateStats();
+            const id  = account.account_id ?? '';
+            const cur = account.currency ?? 'USD';
+            document.getElementById('nav-user').textContent = `${id} (${cur})`;
           }
-
-          document.getElementById('nav-user').textContent = loginId ? `${name} (${loginId})` : name;
         })
         .catch(err => {
           console.warn('Could not load real account data:', err.message);
