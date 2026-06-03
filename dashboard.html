@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DTrader — Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0e0e10;
+      --surface:  #16161a;
+      --border:   #242428;
+      --text:     #f0f0f0;
+      --muted:    #666;
+      --accent:   #ff444f;
+      --buy:      #00c805;
+      --sell:     #ff444f;
+      --warn:     #ff8a00;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ─── NAV ─────────────────────────────────────────── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      height: 52px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      gap: 16px;
+    }
+
+    .nav-brand {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 17px; font-weight: 700; color: var(--text);
+    }
+    .nav-brand-dot { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; }
+
+    .nav-badge {
+      font-size: 10px; padding: 2px 7px; border-radius: 20px; font-weight: 600;
+    }
+    .badge-demo { background: #2a2a10; color: var(--warn); }
+    .badge-live { background: #0a1f0a; color: var(--buy); }
+
+    .nav-balance {
+      display: flex; align-items: baseline; gap: 6px;
+    }
+    .nav-balance-label { font-size: 11px; color: var(--muted); }
+    .nav-balance-value { font-size: 17px; font-weight: 700; }
+
+    .nav-right { display: flex; align-items: center; gap: 12px; }
+
+    .nav-user {
+      font-size: 13px; color: var(--muted);
+    }
+
+    .btn-logout {
+      padding: 6px 14px; border-radius: 7px; border: 1px solid var(--border);
+      background: transparent; color: var(--muted); font-size: 12px;
+      cursor: pointer; transition: color 0.15s, border-color 0.15s;
+    }
+    .btn-logout:hover { color: var(--text); border-color: #444; }
+
+    /* ─── MAIN LAYOUT ─────────────────────────────────── */
+    .layout {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ─── SIDEBAR / TRADE TICKET ──────────────────────── */
+    .sidebar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    .panel-title {
+      font-size: 11px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.7px;
+      padding: 16px 18px 10px;
+    }
+
+    .asset-selector {
+      padding: 0 18px 16px;
+    }
+
+    .asset-selector label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 6px; }
+
+    select {
+      width: 100%; padding: 9px 10px; border-radius: 8px;
+      background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); font-size: 14px; font-weight: 600;
+      cursor: pointer; appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='%23666'%3E%3Cpath d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 10px center;
+    }
+
+    .live-price-row {
+      display: flex; align-items: baseline; gap: 8px; padding: 0 18px 18px;
+    }
+    .live-price { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .live-change { font-size: 13px; font-weight: 600; }
+    .pos { color: var(--buy); }
+    .neg { color: var(--sell); }
+
+    .divider { height: 1px; background: var(--border); margin: 0 18px; }
+
+    .form-section { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+
+    .field label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 6px; }
+
+    input[type="number"] {
+      width: 100%; padding: 9px 10px; border-radius: 8px;
+      background: var(--bg); border: 1px solid var(--border);
+      color: var(--text); font-size: 14px; font-weight: 600;
+    }
+
+    input[type="number"]:focus { outline: none; border-color: #444; }
+
+    .direction-toggle {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+    }
+
+    .dir-btn {
+      padding: 10px; border-radius: 8px; border: 1.5px solid var(--border);
+      background: transparent; color: var(--muted); font-size: 13px; font-weight: 600;
+      cursor: pointer; transition: all 0.15s; text-align: center;
+    }
+
+    .dir-btn.active-buy  { background: #0a2010; border-color: var(--buy);  color: var(--buy); }
+    .dir-btn.active-sell { background: #200a0a; border-color: var(--sell); color: var(--sell); }
+
+    .duration-pills {
+      display: flex; gap: 6px; flex-wrap: wrap;
+    }
+
+    .pill {
+      padding: 5px 11px; border-radius: 20px; border: 1px solid var(--border);
+      background: transparent; color: var(--muted); font-size: 12px;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .pill.active { background: #1a1020; border-color: #885; color: #cc9; }
+
+    .trade-summary {
+      background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+      padding: 12px 14px; display: flex; flex-direction: column; gap: 6px;
+    }
+    .summary-row {
+      display: flex; justify-content: space-between; font-size: 12px;
+    }
+    .summary-row span:first-child { color: var(--muted); }
+    .summary-row span:last-child  { font-weight: 600; }
+
+    .btn-trade {
+      width: 100%; padding: 13px; border-radius: 10px; border: none;
+      font-size: 15px; font-weight: 700; cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn-trade:hover  { opacity: 0.88; }
+    .btn-trade:active { transform: scale(0.98); }
+    .btn-trade.buy  { background: var(--buy);  color: #000; }
+    .btn-trade.sell { background: var(--sell); color: #fff; }
+
+    /* ─── MAIN PANEL ──────────────────────────────────── */
+    .main {
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+
+    .stats-bar {
+      display: flex; gap: 1px; flex-shrink: 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .stat {
+      flex: 1; padding: 14px 18px;
+      background: var(--surface); border-right: 1px solid var(--border);
+    }
+    .stat:last-child { border-right: none; }
+    .stat-label { font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+    .stat-value { font-size: 18px; font-weight: 700; }
+
+    /* ─── POSITIONS TABLE ─────────────────────────────── */
+    .positions-wrap {
+      flex: 1; overflow-y: auto; padding: 20px;
+    }
+
+    .section-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .section-title { font-size: 14px; font-weight: 600; }
+    .position-count {
+      font-size: 11px; color: var(--muted);
+      background: var(--border); padding: 2px 8px; border-radius: 20px;
+    }
+
+    .empty-state {
+      text-align: center; padding: 60px 20px;
+      color: var(--muted); font-size: 14px; line-height: 1.8;
+    }
+
+    .positions-table { width: 100%; border-collapse: collapse; }
+
+    .positions-table th {
+      text-align: left; font-size: 11px; color: var(--muted);
+      font-weight: 500; padding: 0 12px 10px;
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+
+    .positions-table td {
+      padding: 12px; font-size: 13px; font-variant-numeric: tabular-nums;
+      border-top: 1px solid var(--border);
+    }
+
+    .positions-table tr:hover td { background: #ffffff06; }
+
+    .dir-tag {
+      font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px;
+    }
+    .dir-tag.buy  { background: #0a2010; color: var(--buy); }
+    .dir-tag.sell { background: #200a0a; color: var(--sell); }
+
+    .pnl.pos { color: var(--buy); }
+    .pnl.neg { color: var(--sell); }
+
+    .btn-close {
+      padding: 4px 12px; border-radius: 6px; border: 1px solid var(--border);
+      background: transparent; color: var(--muted); font-size: 11px; font-weight: 600;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .btn-close:hover { border-color: var(--sell); color: var(--sell); }
+
+    /* ─── TOAST ───────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: #1e2820; border: 1px solid var(--buy);
+      color: var(--text); padding: 12px 18px; border-radius: 10px;
+      font-size: 13px; font-weight: 500;
+      transform: translateY(80px); opacity: 0;
+      transition: transform 0.25s, opacity 0.25s;
+      pointer-events: none; z-index: 999;
+    }
+    #toast.show { transform: translateY(0); opacity: 1; }
+    #toast.error { background: #281a1a; border-color: var(--sell); }
+  </style>
+</head>
+<body>
+  <!-- NAV -->
+  <nav>
+    <div class="nav-brand">
+      <div class="nav-brand-dot"></div>
+      DTrader
+      <span class="nav-badge" id="mode-badge">DEMO</span>
+    </div>
+
+    <div class="nav-balance">
+      <span class="nav-balance-label">Balance</span>
+      <span class="nav-balance-value" id="nav-balance">$0.00</span>
+    </div>
+
+    <div class="nav-right">
+      <span class="nav-user" id="nav-user">Demo Account</span>
+      <button class="btn-logout" onclick="logout()">Log out</button>
+    </div>
+  </nav>
+
+  <!-- LAYOUT -->
+  <div class="layout">
+    <!-- SIDEBAR: TRADE TICKET -->
+    <aside class="sidebar">
+      <div class="panel-title">Trade</div>
+
+      <div class="asset-selector">
+        <label>Asset</label>
+        <select id="asset-select">
+          <option value="EURUSD">EUR/USD</option>
+          <option value="GBPUSD">GBP/USD</option>
+          <option value="BTCUSD">BTC/USD</option>
+          <option value="ETHUSD">ETH/USD</option>
+          <option value="XAUUSD">Gold / USD</option>
+          <option value="USDJPY">USD/JPY</option>
+        </select>
+      </div>
+
+      <div class="live-price-row">
+        <span class="live-price" id="live-price">—</span>
+        <span class="live-change" id="live-change"></span>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="form-section">
+        <div class="field">
+          <label>Direction</label>
+          <div class="direction-toggle">
+            <button class="dir-btn active-buy" id="btn-buy"  onclick="setDir('buy')">▲ Buy</button>
+            <button class="dir-btn"            id="btn-sell" onclick="setDir('sell')">▼ Sell</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Amount (USD)</label>
+          <input type="number" id="amount" value="100" min="1" step="10" />
+        </div>
+
+        <div class="field">
+          <label>Duration</label>
+          <div class="duration-pills">
+            <button class="pill active" onclick="setDuration(this, '1m')">1 min</button>
+            <button class="pill"        onclick="setDuration(this, '5m')">5 min</button>
+            <button class="pill"        onclick="setDuration(this, '15m')">15 min</button>
+            <button class="pill"        onclick="setDuration(this, '1h')">1 hr</button>
+          </div>
+        </div>
+
+        <div class="trade-summary" id="trade-summary">
+          <div class="summary-row">
+            <span>Asset</span><span id="sum-asset">EUR/USD</span>
+          </div>
+          <div class="summary-row">
+            <span>Entry price</span><span id="sum-price">—</span>
+          </div>
+          <div class="summary-row">
+            <span>Amount</span><span id="sum-amount">$100.00</span>
+          </div>
+          <div class="summary-row">
+            <span>Potential payout</span><span id="sum-payout" style="color:var(--buy)">$185.00</span>
+          </div>
+        </div>
+
+        <button class="btn-trade buy" id="btn-place-trade" onclick="placeTrade()">
+          Place Buy Trade
+        </button>
+      </div>
+    </aside>
+
+    <!-- MAIN PANEL -->
+    <div class="main">
+      <!-- STATS BAR -->
+      <div class="stats-bar">
+        <div class="stat">
+          <div class="stat-label">Balance</div>
+          <div class="stat-value" id="stat-balance">$10,000.00</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Equity</div>
+          <div class="stat-value" id="stat-equity">$10,000.00</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Open P&L</div>
+          <div class="stat-value" id="stat-pnl">$0.00</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Open Positions</div>
+          <div class="stat-value" id="stat-positions">0</div>
+        </div>
+      </div>
+
+      <!-- POSITIONS -->
+      <div class="positions-wrap">
+        <div class="section-header">
+          <span class="section-title">Open Positions</span>
+          <span class="position-count" id="pos-count">0 open</span>
+        </div>
+
+        <div id="empty-state" class="empty-state">
+          No open positions yet.<br>Place a trade using the panel on the left.
+        </div>
+
+        <table class="positions-table" id="positions-table" style="display:none">
+          <thead>
+            <tr>
+              <th>Asset</th>
+              <th>Direction</th>
+              <th>Amount</th>
+              <th>Entry</th>
+              <th>Current</th>
+              <th>P&L</th>
+              <th>Duration</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="positions-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast"></div>
+
+  <script src="auth.js"></script>
+  <script>
+    // ─── Auth guard ──────────────────────────────────────
+    requireAuth();
+    const session = getSession();
+    const isDemo = session.demo;
+
+    document.getElementById('mode-badge').textContent = isDemo ? 'DEMO' : 'LIVE';
+    document.getElementById('mode-badge').className = 'nav-badge ' + (isDemo ? 'badge-demo' : 'badge-live');
+    document.getElementById('nav-user').textContent = isDemo ? 'Demo Account' : 'Live Account';
+
+    // ─── State ───────────────────────────────────────────
+    const ASSETS = {
+      EURUSD: { label: 'EUR/USD', base: 1.0852, pip: 0.0001 },
+      GBPUSD: { label: 'GBP/USD', base: 1.2741, pip: 0.0001 },
+      BTCUSD: { label: 'BTC/USD', base: 67450,  pip: 1      },
+      ETHUSD: { label: 'ETH/USD', base: 3521,   pip: 0.1    },
+      XAUUSD: { label: 'Gold/USD', base: 2341,  pip: 0.1    },
+      USDJPY: { label: 'USD/JPY', base: 149.82, pip: 0.01   },
+    };
+
+    const prices = {};
+    Object.keys(ASSETS).forEach(k => { prices[k] = ASSETS[k].base; });
+
+    let balance = 10000;
+    let positions = [];
+    let nextId = 1;
+    let selectedDir = 'buy';
+    let selectedDuration = '1m';
+    let selectedAsset = 'EURUSD';
+
+    // ─── Live price simulation ────────────────────────────
+    function tickPrice(asset) {
+      const a = ASSETS[asset];
+      const move = (Math.random() - 0.499) * a.pip * 6;
+      prices[asset] = Math.max(a.base * 0.5, prices[asset] + move);
+    }
+
+    function fmt(asset, price) {
+      const decimals = ASSETS[asset].pip < 0.01 ? (ASSETS[asset].pip < 1 ? 4 : 1) : 2;
+      return price.toFixed(decimals);
+    }
+
+    let lastDisplayedPrice = null;
+
+    function updatePriceDisplay() {
+      const asset = document.getElementById('asset-select').value;
+      selectedAsset = asset;
+      tickPrice(asset);
+      const price = prices[asset];
+      const priceEl  = document.getElementById('live-price');
+      const changeEl = document.getElementById('live-change');
+
+      const diff = lastDisplayedPrice !== null ? price - lastDisplayedPrice : 0;
+      lastDisplayedPrice = price;
+
+      priceEl.textContent = fmt(asset, price);
+      if (diff !== 0) {
+        changeEl.textContent = (diff >= 0 ? '+' : '') + fmt(asset, diff);
+        changeEl.className = 'live-change ' + (diff >= 0 ? 'pos' : 'neg');
+      }
+
+      updateSummary();
+    }
+
+    document.getElementById('asset-select').addEventListener('change', () => {
+      lastDisplayedPrice = null;
+      updatePriceDisplay();
+    });
+
+    setInterval(updatePriceDisplay, 1000);
+    updatePriceDisplay();
+
+    // ─── Trade ticket helpers ─────────────────────────────
+    function setDir(dir) {
+      selectedDir = dir;
+      document.getElementById('btn-buy').className  = 'dir-btn' + (dir === 'buy'  ? ' active-buy'  : '');
+      document.getElementById('btn-sell').className = 'dir-btn' + (dir === 'sell' ? ' active-sell' : '');
+      const btn = document.getElementById('btn-place-trade');
+      btn.className = 'btn-trade ' + dir;
+      btn.textContent = dir === 'buy' ? 'Place Buy Trade' : 'Place Sell Trade';
+      updateSummary();
+    }
+
+    function setDuration(el, dur) {
+      selectedDuration = dur;
+      document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+      el.classList.add('active');
+    }
+
+    function updateSummary() {
+      const asset = selectedAsset;
+      const amount = parseFloat(document.getElementById('amount').value) || 0;
+      document.getElementById('sum-asset').textContent  = ASSETS[asset].label;
+      document.getElementById('sum-price').textContent  = fmt(asset, prices[asset]);
+      document.getElementById('sum-amount').textContent = '$' + amount.toFixed(2);
+      document.getElementById('sum-payout').textContent = '$' + (amount * 1.85).toFixed(2);
+    }
+
+    document.getElementById('amount').addEventListener('input', updateSummary);
+
+    // ─── Place trade ──────────────────────────────────────
+    function placeTrade() {
+      const amount = parseFloat(document.getElementById('amount').value);
+      if (!amount || amount <= 0) { showToast('Enter a valid amount.', true); return; }
+      if (amount > balance)       { showToast('Insufficient balance.', true); return; }
+
+      const asset = selectedAsset;
+      balance -= amount;
+
+      positions.push({
+        id: nextId++,
+        asset,
+        dir: selectedDir,
+        amount,
+        entry: prices[asset],
+        duration: selectedDuration,
+        openedAt: Date.now(),
+      });
+
+      renderPositions();
+      updateStats();
+      showToast(`${selectedDir.toUpperCase()} ${ASSETS[asset].label} — $${amount.toFixed(2)}`);
+    }
+
+    // ─── Close position ───────────────────────────────────
+    function closePosition(id) {
+      const idx = positions.findIndex(p => p.id === id);
+      if (idx === -1) return;
+      const p = positions[idx];
+      const pnl = calcPnL(p);
+      balance += p.amount + pnl;
+      positions.splice(idx, 1);
+      renderPositions();
+      updateStats();
+      showToast(`Closed ${ASSETS[p.asset].label} — P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`, pnl < 0);
+    }
+
+    function calcPnL(p) {
+      const current = prices[p.asset];
+      const diff = p.dir === 'buy' ? current - p.entry : p.entry - current;
+      const pips = diff / ASSETS[p.asset].pip;
+      return pips * ASSETS[p.asset].pip * 10000 * (p.amount / 100);
+    }
+
+    // ─── Render ───────────────────────────────────────────
+    function renderPositions() {
+      const tbody  = document.getElementById('positions-body');
+      const table  = document.getElementById('positions-table');
+      const empty  = document.getElementById('empty-state');
+      const count  = document.getElementById('pos-count');
+
+      count.textContent = `${positions.length} open`;
+
+      if (positions.length === 0) {
+        table.style.display = 'none';
+        empty.style.display = 'block';
+        return;
+      }
+
+      table.style.display = 'table';
+      empty.style.display = 'none';
+
+      tbody.innerHTML = positions.map(p => {
+        const pnl  = calcPnL(p);
+        const cls  = pnl >= 0 ? 'pos' : 'neg';
+        const elapsed = Math.floor((Date.now() - p.openedAt) / 1000);
+        return `
+          <tr>
+            <td><strong>${ASSETS[p.asset].label}</strong></td>
+            <td><span class="dir-tag ${p.dir}">${p.dir.toUpperCase()}</span></td>
+            <td>$${p.amount.toFixed(2)}</td>
+            <td>${fmt(p.asset, p.entry)}</td>
+            <td>${fmt(p.asset, prices[p.asset])}</td>
+            <td class="pnl ${cls}">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}</td>
+            <td style="color:var(--muted);font-size:12px">${elapsed}s</td>
+            <td><button class="btn-close" onclick="closePosition(${p.id})">Close</button></td>
+          </tr>`;
+      }).join('');
+    }
+
+    function updateStats() {
+      const openPnL = positions.reduce((s, p) => s + calcPnL(p), 0);
+      const equity  = balance + positions.reduce((s, p) => s + p.amount, 0) + openPnL;
+      const pnlCls  = openPnL >= 0 ? 'pos' : 'neg';
+
+      document.getElementById('nav-balance').textContent   = '$' + balance.toFixed(2);
+      document.getElementById('stat-balance').textContent  = '$' + balance.toFixed(2);
+      document.getElementById('stat-equity').textContent   = '$' + equity.toFixed(2);
+      document.getElementById('stat-pnl').textContent      = (openPnL >= 0 ? '+' : '') + '$' + openPnL.toFixed(2);
+      document.getElementById('stat-pnl').className        = 'stat-value ' + pnlCls;
+      document.getElementById('stat-positions').textContent = positions.length;
+    }
+
+    // ─── Tick loop ────────────────────────────────────────
+    setInterval(() => {
+      Object.keys(ASSETS).forEach(tickPrice);
+      if (positions.length > 0) {
+        renderPositions();
+        updateStats();
+      }
+    }, 1000);
+
+    updateStats();
+
+    // ─── Toast ────────────────────────────────────────────
+    let toastTimer;
+    function showToast(msg, error = false) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.className = 'show' + (error ? ' error' : '');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { el.className = ''; }, 3000);
+    }
+  </script>
+</body>
+</html>

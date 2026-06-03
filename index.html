@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DTrader — Login</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0e0e10;
+      color: #f0f0f0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    .page {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      padding: 24px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 40px;
+    }
+
+    .brand-dot {
+      width: 10px; height: 10px;
+      background: #ff444f;
+      border-radius: 50%;
+    }
+
+    .brand-name {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.3px;
+    }
+
+    .card {
+      background: #16161a;
+      border: 1px solid #242428;
+      border-radius: 18px;
+      padding: 40px 36px 36px;
+      width: 100%;
+      max-width: 380px;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .sub {
+      font-size: 14px;
+      color: #666;
+      margin-bottom: 32px;
+    }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 13px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.15s, transform 0.1s;
+      text-align: center;
+    }
+
+    .btn:hover  { opacity: 0.85; }
+    .btn:active { transform: scale(0.98); }
+
+    .btn-primary  { background: #ff444f; color: #fff; margin-bottom: 10px; }
+    .btn-outline  { background: transparent; color: #ff444f; border: 1.5px solid #ff444f; margin-bottom: 10px; }
+    .btn-demo     { background: #1e1e24; color: #aaa; font-size: 13px; }
+
+    .separator {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #333;
+      font-size: 12px;
+      margin: 18px 0;
+    }
+    .separator::before,
+    .separator::after { content: ''; flex: 1; height: 1px; background: #242428; }
+
+    #status {
+      font-size: 13px;
+      color: #ff8a00;
+      margin-top: 16px;
+      min-height: 18px;
+      text-align: center;
+    }
+
+    .footer {
+      font-size: 11px;
+      color: #444;
+      margin-top: 20px;
+      line-height: 1.7;
+      text-align: center;
+    }
+
+    .footer a { color: #666; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="brand">
+      <div class="brand-dot"></div>
+      <span class="brand-name">DTrader</span>
+    </div>
+
+    <div class="card">
+      <h1>Welcome back</h1>
+      <p class="sub">Sign in to your trading account</p>
+
+      <button class="btn btn-primary" id="btn-login">Log in with Deriv</button>
+      <button class="btn btn-outline" id="btn-signup">Create account</button>
+
+      <div class="separator">or</div>
+
+      <button class="btn btn-demo" id="btn-demo">Continue with Demo account</button>
+
+      <div id="status"></div>
+
+      <p class="footer">
+        By continuing you agree to our
+        <a href="https://deriv.com/tnc/general-terms-of-use.pdf" target="_blank">Terms</a>
+        and
+        <a href="https://deriv.com/tnc/privacy-policy.pdf" target="_blank">Privacy Policy</a>.
+      </p>
+    </div>
+  </div>
+
+  <script src="auth.js"></script>
+  <script>
+    // Already logged in? Go straight to dashboard
+    if (getSession()) window.location.href = 'dashboard.html';
+
+    const status = document.getElementById('status');
+
+    document.getElementById('btn-login').addEventListener('click', async () => {
+      status.textContent = 'Redirecting to Deriv…';
+      try { await redirectToAuth({ signup: false }); }
+      catch (e) { status.textContent = `Error: ${e.message}`; }
+    });
+
+    document.getElementById('btn-signup').addEventListener('click', async () => {
+      status.textContent = 'Redirecting to Deriv…';
+      try { await redirectToAuth({ signup: true }); }
+      catch (e) { status.textContent = `Error: ${e.message}`; }
+    });
+
+    document.getElementById('btn-demo').addEventListener('click', () => loginDemo());
+  </script>
+</body>
+</html>
