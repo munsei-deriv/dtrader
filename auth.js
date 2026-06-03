@@ -62,18 +62,26 @@ async function handleCallback() {
   sessionStorage.removeItem('oauth_state');
   sessionStorage.removeItem('pkce_code_verifier');
 
-  // Move token exchange to a backend in production
-  const response = await fetch(CONFIG.tokenEndpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: CONFIG.clientId,
-      code,
-      code_verifier: codeVerifier,
-      redirect_uri: CONFIG.redirectUri,
-    }),
-  });
+  let response;
+  try {
+    response = await fetch(CONFIG.tokenEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: CONFIG.clientId,
+        code,
+        code_verifier: codeVerifier,
+        redirect_uri: CONFIG.redirectUri,
+      }),
+    });
+  } catch (e) {
+    // CORS or network failure — token endpoint blocked direct browser access
+    throw new Error(
+      'CORS_BLOCKED: The token exchange was blocked by the browser. ' +
+      'A backend proxy is required. See: https://github.com/munsei-deriv/dtrader#cors-setup'
+    );
+  }
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
@@ -83,6 +91,14 @@ async function handleCallback() {
   const token = await response.json();
   _storeSession({ accessToken: token.access_token, expiresIn: token.expires_in, demo: false });
   return token;
+}
+
+async function fetchDerivAccount(token) {
+  const res = await fetch('https://api.derivws.com/trading/v1/options/accounts', {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Deriv API error: ${res.status}`);
+  return res.json();
 }
 
 function loginDemo() {

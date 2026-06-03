@@ -46,7 +46,22 @@
     handleCallback()
       .then(() => { window.location.href = 'dashboard.html'; })
       .catch(e => {
-        document.getElementById('card').innerHTML = `
+        const isCors = e.message.startsWith('CORS_BLOCKED');
+        document.getElementById('card').innerHTML = isCors ? `
+          <div class="error-icon">🔒</div>
+          <h2>Backend proxy required</h2>
+          <p style="margin-bottom:12px">
+            Deriv's token endpoint blocks direct browser requests (CORS).
+            The OAuth flow needs a small server-side proxy to complete.
+          </p>
+          <p style="font-size:12px;color:#888;margin-bottom:8px">
+            <strong>Quick fix:</strong> Deploy a Cloudflare Worker at<br>
+            <code style="color:#aaa">POST /token-proxy</code> that forwards the token exchange to
+            <code style="color:#aaa">auth.deriv.com</code>, then update
+            <code style="color:#aaa">CONFIG.tokenEndpoint</code> in auth.js.
+          </p>
+          <a href="index.html" class="btn">Back to login</a>
+        ` : `
           <div class="error-icon">⚠️</div>
           <h2>Authentication failed</h2>
           <p>${e.message}</p>

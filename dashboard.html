@@ -415,7 +415,32 @@
 
     document.getElementById('mode-badge').textContent = isDemo ? 'DEMO' : 'LIVE';
     document.getElementById('mode-badge').className = 'nav-badge ' + (isDemo ? 'badge-demo' : 'badge-live');
-    document.getElementById('nav-user').textContent = isDemo ? 'Demo Account' : 'Live Account';
+    document.getElementById('nav-user').textContent = isDemo ? 'Demo Account' : 'Loading…';
+
+    // ─── Real account bootstrap ──────────────────────────
+    if (!isDemo) {
+      fetchDerivAccount(session.token)
+        .then(data => {
+          // Normalise: REST API may return { accounts: [...] } or a single account object
+          const account = Array.isArray(data?.accounts) ? data.accounts[0] : data;
+          const realBalance = account?.balance ?? account?.Balance ?? null;
+          const currency    = account?.currency ?? account?.Currency ?? 'USD';
+          const loginId     = account?.loginid  ?? account?.login_id ?? '';
+          const name        = account?.fullname  ?? account?.full_name ?? 'Live Account';
+
+          if (realBalance !== null) {
+            balance = parseFloat(realBalance);
+            updateStats();
+          }
+
+          document.getElementById('nav-user').textContent = loginId ? `${name} (${loginId})` : name;
+        })
+        .catch(err => {
+          console.warn('Could not load real account data:', err.message);
+          document.getElementById('nav-user').textContent = 'Live Account';
+          showToast('Could not load real balance — using simulated data.', true);
+        });
+    }
 
     // ─── State ───────────────────────────────────────────
     const ASSETS = {
