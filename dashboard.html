@@ -558,41 +558,30 @@
 
           // Connect WebSocket for real trading
           derivWS = new DerivWS();
-          return derivWS.connect(session.token);
+          return derivWS.connect(session.token, defaultAccount.account_id, defaultAccount.account_type);
         })
-        .then(acctInfo => {
-          if (acctInfo) {
-            showToast('Connected to Deriv — trades are live.');
-            // Refresh balance from WS authorize response
-            if (acctInfo.balance != null && activeAccount) {
-              balance = parseFloat(acctInfo.balance);
-              updateStats();
-            }
-          }
+        .then(() => {
+          showToast('Connected to Deriv — trades are live.');
         })
         .catch(err => {
-          console.warn('Setup error:', err.message);
+          console.error('WS setup error:', err.message);
           derivWS = null;
-          if (allAccounts.length === 0) {
-            document.getElementById('nav-user').textContent = 'Live Account';
-          }
-          showToast('Live trading unavailable — using simulated mode.', true);
+          showToast(`WS: ${err.message}`, true);
         });
     }
 
-    // Re-connect WebSocket when switching accounts (if WS has an account token)
-    const _baseSwitch = switchAccount;
+    // Re-connect WebSocket when switching accounts
     switchAccount = async function(accountId) {
       const account = allAccounts.find(a => a.account_id === accountId);
       if (!account) return;
       closeDropdown();
 
-      if (derivWS && derivWS.accountTokens[accountId]) {
+      if (derivWS) {
         try {
-          const acctInfo = await derivWS.connect(derivWS.accountTokens[accountId]);
-          if (acctInfo?.balance != null) account.balance = acctInfo.balance;
+          await derivWS.connect(session.token, account.account_id, account.account_type);
         } catch (e) {
           console.warn('WS account switch failed:', e.message);
+          showToast(`WS reconnect failed: ${e.message}`, true);
         }
       }
 
@@ -614,30 +603,38 @@
       '1h': { duration: 1, duration_unit: 'h' },
     };
 
+    const WS_BASE = 'wss://api.derivws.com/trading/v1/options/ws';
+
     class DerivWS {
       constructor() {
         this.ws = null;
         this._pending = new Map();
         this._reqId = 1;
-        this.accountTokens = {}; // loginid → token from authorize response
       }
 
-      connect(token) {
+      async connect(token, accountId, accountType) {
+        // Step 1: get a one-time password from the REST API
+        const otp    = await fetchDerivOTP(token, accountId);
+        const wsType = accountType === 'real' ? 'real' : 'demo';
+        const wsUrl  = typeof otp === 'string' && otp.startsWith('wss://')
+          ? otp
+          : `${WS_BASE}/${wsType}?otp=${otp}`;
+
+        // Step 2: open the authenticated WebSocket (no authorize message needed)
         return new Promise((resolve, reject) => {
           if (this.ws) { this.ws.close(); this.ws = null; }
-          this.ws = new WebSocket('wss://ws.binaryws.com/websockets/v3');
+          this.ws = new WebSocket(wsUrl);
           this.ws.onmessage = e => this._onMsg(JSON.parse(e.data));
           this.ws.onerror   = () => reject(new Error('WebSocket connection failed'));
-          this.ws.onopen    = () => {
-            this._send({ authorize: token })
-              .then(res => {
-                (res.authorize?.account_list ?? []).forEach(a => {
-                  if (a.token) this.accountTokens[a.loginid] = a.token;
-                });
-                resolve(res.authorize);
-              })
-              .catch(reject);
+          this.ws.onclose   = e => {
+            if (e.code !== 1000 && this._pending.size > 0) {
+              this._pending.forEach(({ reject }) =>
+                reject(new Error(`WebSocket closed (${e.code}): ${e.reason || 'disconnected'}`))
+              );
+              this._pending.clear();
+            }
           };
+          this.ws.onopen = () => resolve();
         });
       }
 
@@ -664,21 +661,14 @@
           price: amount,
           parameters: {
             amount, basis: 'stake', contract_type: contractType,
-            currency: 'USD', duration, duration_unit: durationUnit, symbol,
+            currency: 'USD', duration, duration_unit: durationUnit,
+            underlying_symbol: symbol,
           },
         });
       }
 
       sell(contractId) {
         return this._send({ sell: contractId, price: 0 });
-      }
-
-      getPortfolio() {
-        return this._send({ portfolio: 1 });
-      }
-
-      getBalance() {
-        return this._send({ balance: 1 });
       }
     }
 

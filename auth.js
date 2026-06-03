@@ -93,12 +93,34 @@ async function handleCallback() {
   return token;
 }
 
+const REST_BASE = 'https://api.derivws.com';
+
+function derivHeaders(token) {
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Deriv-App-ID': CONFIG.clientId,
+  };
+}
+
 async function fetchDerivAccount(token) {
-  const res = await fetch('https://api.derivws.com/trading/v1/options/accounts', {
-    headers: { 'Authorization': `Bearer ${token}` },
+  const res = await fetch(`${REST_BASE}/trading/v1/options/accounts`, {
+    headers: derivHeaders(token),
   });
   if (!res.ok) throw new Error(`Deriv API error: ${res.status}`);
   return res.json();
+}
+
+async function fetchDerivOTP(token, accountId) {
+  const res = await fetch(`${REST_BASE}/trading/v1/options/accounts/${accountId}/otp`, {
+    method: 'POST',
+    headers: derivHeaders(token),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `OTP request failed: ${res.status}`);
+  }
+  const data = await res.json();
+  return data?.data?.otp ?? data?.otp ?? data;
 }
 
 async function loginDemo() {
