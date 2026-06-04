@@ -621,12 +621,12 @@
           const otp = await fetchDerivOTP(token, accountId);
           // OTP endpoint may return a full wss:// URL or just the token string
           wsUrl = typeof otp === 'string' && otp.startsWith('wss://')
-            ? otp
-            : `${WS_BASE}/${wsType}?account_id=${accountId}&otp=${otp}`;
+            ? otp  // OTP endpoint returned a full ready-to-use URL
+            : `${WS_BASE}/${wsType}?account_id=${accountId}&otp=${encodeURIComponent(otp)}`;
         } catch (e) {
-          // Fall back to account_id-only URL (relies on session/cookie auth)
-          console.warn('[WS] OTP fetch failed, trying without OTP:', e.message);
-          wsUrl = `${WS_BASE}/${wsType}?account_id=${accountId}`;
+          // Fall back: pass Bearer token as query param for auth
+          console.warn('[WS] OTP fetch failed, using token auth:', e.message);
+          wsUrl = `${WS_BASE}/${wsType}?account_id=${accountId}&token=${encodeURIComponent(token)}`;
         }
 
         console.log('[WS] connecting to', wsUrl);
