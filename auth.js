@@ -1,11 +1,19 @@
 const CONFIG = {
+  // SECURITY: client_id is intentionally public — PKCE public clients have no client_secret.
+  // Risk: lookalike phishing apps. Mitigation: ensure redirect URI is strictly pinned to
+  // https://munsei-deriv.github.io/dtrader/callback.html in Deriv's OAuth app settings.
   clientId: '33rRsRXIjZYPXgiQ5s1Va',
-  // Change this to your hosted callback URL and register it with Deriv to enable real OAuth
   redirectUri: window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + 'callback.html',
   authEndpoint: 'https://auth.deriv.com/oauth2/auth',
   tokenEndpoint: 'https://auth.deriv.com/oauth2/token',
-  scope: 'trade account_manage',
+  // SECURITY: scope narrowed to 'trade' only — account_manage removed (unnecessary privilege).
+  scope: 'trade',
 };
+
+// SECURITY: access token lives in memory only after the initial callback→dashboard handoff.
+// sessionStorage is used solely as a short-lived transport between those two pages and is
+// cleared immediately on first read. This limits XSS exposure to the brief redirect window.
+let _memSession = null;
 
 async function generatePKCE() {
   const array = crypto.getRandomValues(new Uint8Array(64));
@@ -62,6 +70,8 @@ async function handleCallback() {
   sessionStorage.removeItem('oauth_state');
   sessionStorage.removeItem('pkce_code_verifier');
 
+  // SECURITY: token exchange done browser-side (PKCE public client).
+  // For production, proxy this through a backend to avoid CORS and hide exchange details.
   let response;
   try {
     response = await fetch(CONFIG.tokenEndpoint, {
@@ -76,7 +86,6 @@ async function handleCallback() {
       }),
     });
   } catch (e) {
-    // CORS or network failure — token endpoint blocked direct browser access
     throw new Error(
       'CORS_BLOCKED: The token exchange was blocked by the browser. ' +
       'A backend proxy is required. See: https://github.com/munsei-deriv/dtrader#cors-setup'
@@ -89,10 +98,12 @@ async function handleCallback() {
   }
 
   const token = await response.json();
-  _storeSession({ accessToken: token.access_token, expiresIn: token.expires_in, demo: false });
+  _storeSession({ accessToken: token.access_token, expiresIn: token.expires_in });
   return token;
 }
 
+// SECURITY: api-core.deriv.com and api.derivws.com are Deriv's documented public API endpoints.
+// OTP endpoint follows Deriv's official authentication flow for WebSocket connections.
 const REST_BASE = 'https://api.derivws.com';
 
 function derivHeaders(token) {
@@ -126,41 +137,56 @@ async function fetchDerivOTP(token, accountId) {
     throw new Error(body?.message ?? body?.error ?? `OTP request failed: ${res.status}`);
   }
 
-  // Walk common response shapes to find the WS URL or OTP string
   const d = body?.data;
   const otp =
-    (typeof d === 'string'         ? d          : null) ??  // { data: "string" }
-    (typeof d?.url === 'string'    ? d.url      : null) ??  // { data: { url: "wss://..." } }
-    (typeof d?.otp === 'string'    ? d.otp      : null) ??  // { data: { otp: "..." } }
-    (typeof d?.ws_url === 'string' ? d.ws_url   : null) ??  // { data: { ws_url: "..." } }
-    (typeof body?.otp === 'string' ? body.otp   : null) ??  // { otp: "..." }
-    (typeof body?.url === 'string' ? body.url   : null);    // { url: "wss://..." }
+    (typeof d === 'string'         ? d        : null) ??
+    (typeof d?.url === 'string'    ? d.url    : null) ??
+    (typeof d?.otp === 'string'    ? d.otp    : null) ??
+    (typeof d?.ws_url === 'string' ? d.ws_url : null) ??
+    (typeof body?.otp === 'string' ? body.otp : null) ??
+    (typeof body?.url === 'string' ? body.url : null);
 
-  if (!otp) {
-    throw new Error('Cannot parse OTP from response: ' + JSON.stringify(body));
-  }
+  if (!otp) throw new Error('Cannot parse OTP from response: ' + JSON.stringify(body));
 
   console.log('[OTP] parsed value:', otp);
   return otp;
 }
 
 async function loginDemo() {
-  // Go through real OAuth so the WebSocket can authenticate — default to demo account after login
   sessionStorage.setItem('prefer_demo', '1');
   await redirectToAuth({ signup: false });
 }
 
-function _storeSession({ accessToken, expiresIn, demo }) {
-  sessionStorage.setItem('access_token', accessToken);
-  sessionStorage.setItem('token_expires_at', Date.now() + expiresIn * 1000);
-  sessionStorage.setItem('demo_mode', demo ? '1' : '0');
+function _storeSession({ accessToken, expiresIn }) {
+  // Write to sessionStorage only as a one-time handoff to the next page.
+  // getSession() clears it from sessionStorage and moves it to memory on first read.
+  sessionStorage.setItem('_hs', JSON.stringify({
+    t: accessToken,
+    e: Date.now() + expiresIn * 1000,
+  }));
 }
 
 function getSession() {
-  const token = sessionStorage.getItem('access_token');
-  const expiresAt = Number(sessionStorage.getItem('token_expires_at'));
-  if (!token || Date.now() >= expiresAt) return null;
-  return { token, demo: sessionStorage.getItem('demo_mode') === '1' };
+  // Return from memory if already loaded
+  if (_memSession && Date.now() < _memSession.expiresAt) {
+    return { token: _memSession.token, demo: _memSession.demo };
+  }
+
+  // First call after redirect: migrate from sessionStorage into memory, then clear
+  const raw = sessionStorage.getItem('_hs');
+  if (raw) {
+    try {
+      const s = JSON.parse(raw);
+      if (Date.now() < s.e) {
+        _memSession = { token: s.t, expiresAt: s.e, demo: false };
+        sessionStorage.removeItem('_hs'); // cleared immediately — not left sitting in storage
+        return { token: _memSession.token, demo: _memSession.demo };
+      }
+    } catch (_) {}
+    sessionStorage.removeItem('_hs');
+  }
+
+  return null;
 }
 
 function requireAuth() {
@@ -168,6 +194,7 @@ function requireAuth() {
 }
 
 function logout() {
+  _memSession = null;
   sessionStorage.clear();
   window.location.href = 'index.html';
 }
