@@ -349,12 +349,12 @@
       <div class="asset-selector">
         <label>Asset</label>
         <select id="asset-select">
-          <option value="EURUSD">EUR/USD</option>
-          <option value="GBPUSD">GBP/USD</option>
-          <option value="BTCUSD">BTC/USD</option>
-          <option value="ETHUSD">ETH/USD</option>
-          <option value="XAUUSD">Gold / USD</option>
-          <option value="USDJPY">USD/JPY</option>
+          <option value="1HZ100V" selected>Volatility 100 (1s)</option>
+          <option value="R_100">Volatility 100</option>
+          <option value="R_75">Volatility 75</option>
+          <option value="R_50">Volatility 50</option>
+          <option value="R_25">Volatility 25</option>
+          <option value="1HZ10V">Volatility 10 (1s)</option>
         </select>
       </div>
 
@@ -590,10 +590,14 @@
     };
 
     // ─── Deriv WebSocket ─────────────────────────────────
+    // For synthetic indices the key IS the symbol
     const SYMBOLS = {
-      EURUSD: 'frxEURUSD', GBPUSD: 'frxGBPUSD',
-      BTCUSD: 'cryBTCUSD', ETHUSD: 'cryETHUSD',
-      XAUUSD: 'frxXAUUSD', USDJPY: 'frxUSDJPY',
+      '1HZ100V': '1HZ100V',
+      'R_100':   'R_100',
+      'R_75':    'R_75',
+      'R_50':    'R_50',
+      'R_25':    'R_25',
+      '1HZ10V':  '1HZ10V',
     };
 
     const DURATIONS = {
@@ -695,12 +699,12 @@
 
     // ─── State ───────────────────────────────────────────
     const ASSETS = {
-      EURUSD: { label: 'EUR/USD', base: 1.0852, pip: 0.0001 },
-      GBPUSD: { label: 'GBP/USD', base: 1.2741, pip: 0.0001 },
-      BTCUSD: { label: 'BTC/USD', base: 67450,  pip: 1      },
-      ETHUSD: { label: 'ETH/USD', base: 3521,   pip: 0.1    },
-      XAUUSD: { label: 'Gold/USD', base: 2341,  pip: 0.1    },
-      USDJPY: { label: 'USD/JPY', base: 149.82, pip: 0.01   },
+      '1HZ100V': { label: 'Volatility 100 (1s)',  base: 500.00, pip: 0.01 },
+      'R_100':   { label: 'Volatility 100',        base: 500.00, pip: 0.01 },
+      'R_75':    { label: 'Volatility 75',         base: 300.00, pip: 0.01 },
+      'R_50':    { label: 'Volatility 50',         base: 200.00, pip: 0.01 },
+      'R_25':    { label: 'Volatility 25',         base: 100.00, pip: 0.01 },
+      '1HZ10V':  { label: 'Volatility 10 (1s)',   base: 100.00, pip: 0.001 },
     };
 
     const prices = {};
@@ -711,7 +715,7 @@
     let nextId = 1;
     let selectedDir = 'buy';
     let selectedDuration = '1m';
-    let selectedAsset = 'EURUSD';
+    let selectedAsset = '1HZ100V';
 
     // ─── Live price simulation ────────────────────────────
     function tickPrice(asset) {
