@@ -126,8 +126,21 @@ async function fetchDerivOTP(token, accountId) {
     throw new Error(body?.message ?? body?.error ?? `OTP request failed: ${res.status}`);
   }
 
-  const otp = body?.data?.otp ?? body?.otp ?? body?.data ?? body;
-  console.log('[OTP] parsed otp:', otp);
+  // Walk common response shapes to find the WS URL or OTP string
+  const d = body?.data;
+  const otp =
+    (typeof d === 'string'         ? d          : null) ??  // { data: "string" }
+    (typeof d?.url === 'string'    ? d.url      : null) ??  // { data: { url: "wss://..." } }
+    (typeof d?.otp === 'string'    ? d.otp      : null) ??  // { data: { otp: "..." } }
+    (typeof d?.ws_url === 'string' ? d.ws_url   : null) ??  // { data: { ws_url: "..." } }
+    (typeof body?.otp === 'string' ? body.otp   : null) ??  // { otp: "..." }
+    (typeof body?.url === 'string' ? body.url   : null);    // { url: "wss://..." }
+
+  if (!otp) {
+    throw new Error('Cannot parse OTP from response: ' + JSON.stringify(body));
+  }
+
+  console.log('[OTP] parsed value:', otp);
   return otp;
 }
 
