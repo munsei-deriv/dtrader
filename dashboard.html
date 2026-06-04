@@ -603,7 +603,7 @@
       '1h': { duration: 1, duration_unit: 'h' },
     };
 
-    const WS_BASE = 'wss://api.derivws.com/trading/v1/options/ws';
+    const WS_BASE = 'wss://api-core.deriv.com/options/v1/ws';
 
     class DerivWS {
       constructor() {
@@ -613,19 +613,29 @@
       }
 
       async connect(token, accountId, accountType) {
-        // Step 1: get a one-time password from the REST API
-        const otp    = await fetchDerivOTP(token, accountId);
         const wsType = accountType === 'real' ? 'real' : 'demo';
-        const wsUrl  = typeof otp === 'string' && otp.startsWith('wss://')
-          ? otp
-          : `${WS_BASE}/${wsType}?otp=${otp}`;
 
-        // Step 2: open the authenticated WebSocket (no authorize message needed)
+        // Get OTP from REST API — used to authenticate the WebSocket connection
+        let wsUrl;
+        try {
+          const otp = await fetchDerivOTP(token, accountId);
+          // OTP endpoint may return a full wss:// URL or just the token string
+          wsUrl = typeof otp === 'string' && otp.startsWith('wss://')
+            ? otp
+            : `${WS_BASE}/${wsType}?account_id=${accountId}&otp=${otp}`;
+        } catch (e) {
+          // Fall back to account_id-only URL (relies on session/cookie auth)
+          console.warn('[WS] OTP fetch failed, trying without OTP:', e.message);
+          wsUrl = `${WS_BASE}/${wsType}?account_id=${accountId}`;
+        }
+
+        console.log('[WS] connecting to', wsUrl);
+
         return new Promise((resolve, reject) => {
           if (this.ws) { this.ws.close(); this.ws = null; }
           this.ws = new WebSocket(wsUrl);
           this.ws.onmessage = e => this._onMsg(JSON.parse(e.data));
-          this.ws.onerror   = () => reject(new Error('WebSocket connection failed'));
+          this.ws.onerror   = () => reject(new Error(`WS connection failed: ${wsUrl}`));
           this.ws.onclose   = e => {
             if (e.code !== 1000 && this._pending.size > 0) {
               this._pending.forEach(({ reject }) =>
